@@ -1,8 +1,7 @@
-# gists
+# Gists
 
-A new Flutter project.
 
-## Riverpod
+## Riverpod Generator
 
 ```commandline
 flutter pub run build_runner watch
