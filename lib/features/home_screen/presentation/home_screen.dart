@@ -5,6 +5,7 @@ import 'package:gists/data/gist_file.dart';
 import 'package:gists/data/gists.dart';
 import 'package:gists/data/gist.dart';
 import 'package:gists/extentions.dart';
+import 'package:gists/features/home_screen/presentation/sidemenu.dart';
 import 'package:gists/widget/async_value_widget.dart';
 import 'package:github/github.dart';
 
@@ -19,13 +20,27 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final TextEditingController codeController = TextEditingController();
+  // For new gist
   final TextEditingController newGistNameController = TextEditingController();
-  final TextEditingController newGistFileController = TextEditingController();
-  final TextEditingController newGistDescriptionController = TextEditingController();
+  // For new gist file
+  final TextEditingController newGistFileNameController =
+      TextEditingController();
+  final TextEditingController newGistFileContentController =
+      TextEditingController();
+  final TextEditingController newGistDescriptionController =
+      TextEditingController();
+
   bool loadingNewGist = false;
   bool newGistPublic = false;
+  Gist? newGist = null;
 
-  int selectedTile = -1;
+  @override
+  void initState() {
+    if (newGist != null) {
+      newGistDescriptionController.text = newGist!.description ?? "";
+    }
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +49,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     var selectedGist = ref.watch(gist_Provider);
     var selectedGistFile = ref.watch(gistFile_Provider);
 
+    if (newGist != null) {
+      print(newGist!.description);
+    }
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
@@ -43,93 +61,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             value: gists,
             data: (Map<String, Gist> gists) {
               return IconButton(
-                  onPressed: () => _dialogBuilder(context, gists),
-                  icon: Icon(Icons.add));
+                onPressed: () {},
+                icon: Icon(Icons.add),
+              );
             },
           ),
-          IconButton(onPressed: () {
-            ref.read(gistsProvider.notifier).refresh();
-          }, icon: Icon(Icons.refresh)),
+          AsyncValueWidget(
+            value: selectedGist,
+            data: (Gist? gist) {
+              if (gist != null) {
+                return IconButton(
+                  onPressed: () => _newGistFileDialog(context, gist),
+                  icon: Icon(Icons.note_add),
+                );
+              }
+
+              return Container();
+            },
+          ),
+          IconButton(
+            onPressed: () {
+              ref.read(gistsProvider.notifier).refresh();
+            },
+            icon: Icon(Icons.refresh),
+          ),
         ],
       ),
       body: Row(
         children: [
-          AsyncValueWidget(
-              value: gists,
-              data: (Map<String, Gist> gists) {
-                return Drawer(
-                  shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero),
-                  child: AsyncValueWidget(
-                    value: selectedGist,
-                    data: (Gist? selectedGist) {
-                      var gistList = gists.entries.toList();
-                      return ListView.builder(
-                        key: Key(selectedTile.toString()),
-                        itemCount: gists.length,
-                        itemBuilder: (BuildContext context, int i) {
-                          return ExpansionTile(
-                            initiallyExpanded: i == selectedTile,
-                            onExpansionChanged: (state) {
-                              if (state) {
-                                setState(() {
-                                  selectedTile = i;
-                                });
-                                ref
-                                    .read(gist_Provider.notifier)
-                                    .set(gistList[i].value.id);
-                              } else {
-                                setState(() {
-                                  selectedTile = -1;
-                                });
-                              }
-                            },
-                            // shape: const Border(),
-                            title: Text(gistList[i].value.name()),
-                            subtitle: Row(
-                              children: [
-                                if (gistList[i].value.public != null &&
-                                    gistList[i].value.public!)
-                                  Icon(
-                                    Icons.public,
-                                    size: Theme.of(context)
-                                        .textTheme
-                                        .titleSmall!
-                                        .fontSize!,
-                                  )
-                              ],
-                            ),
-                            children:
-                                gistList[i].value.files!.entries.map((gf) {
-                              return InkWell(
-                                onTap: () {
-                                  ref
-                                      .read(gistFile_Provider.notifier)
-                                      .set(gf.key);
-                                },
-                                child: ListTile(
-                                  tileColor: Theme.of(context)
-                                      .colorScheme
-                                      .secondaryContainer,
-                                  title: Text(gf.key),
-                                  subtitle: gf.value.language != null
-                                      ? Text(gf.value.language!)
-                                      : null,
-                                ),
-                              );
-                            }).toList(),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                );
-              }),
+          SidebarMenu(),
           Expanded(
               child: AsyncValueWidget(
             value: selectedGistFile,
             data: (GistFile? gf) {
-
               if (gf != null) {
                 codeController.text = gf.content ?? "";
               }
@@ -148,7 +112,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Future<void> _dialogBuilder(BuildContext context, Map<String, Gist> gists) {
+  Future<void> _newGistFileDialog(BuildContext context, Gist? gist) {
     return showDialog<void>(
       context: context,
       builder: (BuildContext context) {
@@ -157,54 +121,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             return PopScope(
               canPop: false,
               child: AlertDialog(
-                title: const Text('Add New Gist'),
+                title: const Text('New Gist File'),
                 content: Stack(
                   children: [
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        DropdownMenu<String>(
-                          controller: newGistNameController,
-                          initialSelection: 'New Gist',
-                          requestFocusOnTap: true,
-                          onSelected: (String? color) {
-                            setState(() {
-                              print(color);
-                            });
+                        TextField(
+                          controller: newGistFileNameController,
+                          decoration: InputDecoration(labelText: "File Name"),
+                          onChanged: (val) {
+                            setState(() {});
                           },
-                          dropdownMenuEntries: gists.entries
-                              .map<DropdownMenuEntry<String>>((MapEntry gist) {
-                            return DropdownMenuEntry<String>(
-                              value: gist.value.id,
-                              label: (gist.value as Gist).name(),
-                              style: MenuItemButton.styleFrom(),
-                            );
-                          }).toList(),
                         ),
-                        TextField(
-                          controller: newGistFileController,
-                            decoration: InputDecoration(
-                                labelText: "File Name"
-                            )
-                        ),
-                        TextField(
-                          controller: newGistDescriptionController,
-                          decoration: InputDecoration(
-                            labelText: "Description"
+                        Container(
+                          constraints: BoxConstraints(
+                              // maxWidth: 1024,
+                              maxHeight: 256),
+                          child: TextField(
+                            controller: newGistFileContentController,
+                            decoration:
+                                InputDecoration(labelText: "File Content"),
+                            expands: true,
+                            maxLines: null,
+                            onChanged: (val) {
+                              setState(() {});
+                            },
                           ),
                         ),
-                        kHeight8,
-                        Row(
-                          children: [
-                            Text("Public"),
-                            Switch(value: newGistPublic, onChanged: (val){
-                              setState((){
-                                newGistPublic=val;
-                              });
-                            }),
-                          ],
-                        )
+                        // Row(
+                        //   children: [
+                        //     Text("Public"),
+                        //     Switch(
+                        //         value: newGist != null
+                        //             ? (newGist!.public ?? newGistPublic)
+                        //             : newGistPublic,
+                        //         onChanged: (val) {
+                        //           setState(() {
+                        //             newGistPublic = val;
+                        //           });
+                        //         }),
+                        //   ],
+                        // )
                       ],
                     ),
                     if (loadingNewGist == true)
@@ -219,28 +178,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 actions: <Widget>[
                   TextButton(
                     child: const Text('Cancel'),
-                    onPressed:loadingNewGist == false ? (){
-                      Navigator.of(context).pop();
-                    } : null,
+                    onPressed: loadingNewGist == false
+                        ? () {
+                            Navigator.of(context).pop();
+                          }
+                        : null,
                   ),
                   ElevatedButton(
                     child: Text('Add'),
-                    onPressed: loadingNewGist == false ? () async {
-                      setState(() {
-                        loadingNewGist = true;
-                      });
-                      GitHub client = ref.read(githubProvider);
-                      await client.gists.createGist(
-                          {'newGistNameController.text':"dd"},
-                        description: newGistDescriptionController.text,
-                        public: true
-                      );
-                      print('DONE');
-                      setState(() {
-                        loadingNewGist = false;
-                      });
-                      Navigator.of(context).pop();
-                    } : null,
+                    onPressed: (loadingNewGist == false &&
+                            newGistFileNameController.text != "" &&
+                            newGistFileContentController.text != "")
+                        ? () async {
+                            setState(() {
+                              loadingNewGist = true;
+                            });
+                            GitHub client = ref.read(githubProvider);
+                            var res = await client.gists.editGist(gist!.id!,
+                                files: {
+                                  newGistFileNameController.text:
+                                      newGistFileContentController.text
+                                });
+
+                            ref.read(gistsProvider.notifier).refresh();
+                            ref.read(gist_Provider.notifier).set(gist.id!);
+                            // ref.read(gistFile_Provider.notifier).set(newGistFileNameController.text);
+                            setState(() {
+                              loadingNewGist = false;
+                            });
+                            Navigator.of(context).pop();
+                          }
+                        : null,
                   ),
                 ],
               ),
